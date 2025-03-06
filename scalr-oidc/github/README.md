@@ -47,11 +47,11 @@ Content-Type: application/vnd.api+json
 
 **Explanation:**
 - `url`: The OIDC provider's token endpoint (GitHub Actions in this case).
-- `allowed-audiences`: A list of trusted audience values that the provider will accept.
+- `allowed-audiences`: A list of trusted audience values that the provider is allowed to provide.
 - `name`: A unique identifier for this identity provider within Scalr.
 
 ### Step 2: Configure Assume Policy for a Service Account
-After registering the workload identity provider, you must define an assume policy, allowing a specific service account to use the provider.
+After registering the workload identity provider, you must define an assume policy, allowing that provider to obtain a temporary access token of the specific service account.
 
 #### **Request**
 **Endpoint:**
@@ -103,7 +103,7 @@ Content-Type: application/vnd.api+json
 - `claim-conditions`: Defines the conditions under which the identity provider can assume this service account.
   - `repository`: Restricts access to a specific GitHub repository.
   - `sub`: Specifies the exact subject that is allowed to assume this service account.
-- `maximum-session-duration`: Sets the session duration in seconds (3600 = 1 hour).
+- `maximum-session-duration`: Optional: Sets the session duration in seconds. Default: 3600 (1 hour).
 - `relationships`: Links this policy to the previously registered identity provider.
 
 ### Step 3: Update GitHub Actions Workflow

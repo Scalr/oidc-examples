@@ -1,0 +1,30 @@
+stages:
+  - setup
+  - deploy
+
+variables:
+  SCALR_HOSTNAME: "my-account.scalr.io"
+  SCALR_ENVIRONMENT: my-environment
+  SCALR_WORKSPACE: my-workspace
+  SCALR_SA_EMAIL: "assumed-account@my-account.scalr.io"
+  SCALR_AUD: "https://gitlab.com/namespace"
+
+run-opentofu:
+  id_tokens:
+      aud: https://gitlab.com/namespace
+  stage: deploy
+  image: debian:latest
+  before_script:
+    - apt update -qq 2>/dev/null >/dev/null;
+    - apt install -yq curl jq unzip 2>/dev/null >/dev/null;
+    - curl -sL https://github.com/opentofu/opentofu/releases/download/v1.9.0/tofu_1.9.0_linux_amd64.zip -o tofu.zip
+    - unzip tofu.zip tofu && chmod +x ./tofu
+    - mv ./tofu /usr/local/bin
+    - tofu version
+  script:
+    - chmod +x prepare-env.sh
+    - ./prepare-env.sh
+    -
+    - echo "Initializing and Running OpenTofu..."
+    - tofu init
+    - tofu plan

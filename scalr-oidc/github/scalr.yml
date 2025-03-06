@@ -1,0 +1,91 @@
+ame: Test Scalr Integration
+
+on:
+  push:
+    branches:
+      - master
+env:
+  SCALR_HOSTNAME: my-account.scalr.io
+  SCALR_ENVIRONMENT: my-environment
+  SCALR_WORKSPACE: my-environment
+
+jobs:
+  run-opentofu:
+    runs-on: ubuntu-latest
+    environment: development
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Generate GitHub Actions OIDC ID Token
+        id: generate-oidc-token
+        run: |
+          RESPONSE=$(curl -s -X POST  -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL")
+
+          OIDC_ID_TOKEN=$(echo $RESPONSE | jq -r '.value')
+          
+          if [ -z "$OIDC_ID_TOKEN" ] || [ "$OIDC_ID_TOKEN" == "null" ]; then
+            echo "Error: Failed to retrieve OIDC token."
+            exit 1
+          fi
+          
+          echo "OIDC_ID_TOKEN=$OIDC_ID_TOKEN" >> $GITHUB_ENV
+          echo "OIDC_ID_TOKEN extracted successfully."
+
+      - name: Exchange OIDC ID Token for Scalr Token
+        id: exchange-token
+        run: |
+          RESPONSE=$(curl -s -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"id_token": "'${{ env.OIDC_ID_TOKEN }}'", "service-account-email": "'${{ env.SA_EMAIL }}'"}' \
+            "https://${{ env.SCALR_HOST }}/api/iacp/v3/service-accounts/assume")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed '$ d')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+          echo "Scalr Response: $HTTP_BODY"
+          echo "HTTP Status Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Error: Failed to exchange token. HTTP status: $HTTP_CODE"
+            exit 1
+          fi
+          SCALR_TOKEN=$(echo "$HTTP_BODY" | jq -r '."access-token"')
+          if [ -z "$SCALR_TOKEN" ] || [ "$SCALR_TOKEN" == "null" ]; then
+            echo "Error: Token not found in response."
+            exit 1
+          fi
+          
+          echo "SCALR_TOKEN=$SCALR_TOKEN" >> $GITHUB_ENV
+          echo "Scalr token retrieved successfully."
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          cli_config_credentials_hostname: ${{ env.SCALR_HOST }}
+          cli_config_credentials_token: ${{ env.SCALR_TOKEN }}
+
+      - name: Generate Override Configuration
+        run: |
+          cat <<EOF > override.tf
+          terraform {
+            backend "remote" {
+              hostname = "${{ secrets.SCALR_HOST }}"
+              organization = "${{ env.SCALR_ENVIRONMENT }}"
+              workspaces {
+                name = "${{ env.SCALR_WORKSPACE }}"
+              }
+            }
+          }
+          EOF
+          echo "override.tf configuration generated successfully."
+
+      - name: Initialize and Run OpenTofu
+        run: |
+          tofu init
+          tofu plan
